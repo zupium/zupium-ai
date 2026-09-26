@@ -358,7 +358,6 @@ button { font-family: inherit; cursor: pointer; }
   position: relative;
 }
 
-/* Caret/Kursor yang menempel di ujung kata */
 .welcome-title::after {
   content: '';
   display: inline-block;
@@ -367,7 +366,7 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--pulse);
   margin-left: 4px;
   vertical-align: middle;
-  animation: title-blink 0.3s step-end 5 forwards;
+  animation: title-blink 0.1s step-end 5 forwards;
 }
 
 .welcome-title .char {
