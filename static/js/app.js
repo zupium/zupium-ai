@@ -512,26 +512,25 @@ function autoGrowTextarea(el) {
 }
 
 function init() {
+  const titleEl = document.querySelector('.welcome-title');
+  if (titleEl) {
+    const text = titleEl.textContent.trim();
+    titleEl.textContent = '';
+    const totalDuration = 1200; // 1.2 detik total ketik
+    const stepDelay = totalDuration / text.length;
+
+    Array.from(text).forEach((char, index) => {
+      const span = document.createElement('span');
+      span.className = 'char';
+      span.textContent = char;
+      span.style.animationDelay = `${index * stepDelay}ms`;
+      titleEl.appendChild(span);
+    });
+  }
+
   initStarfield();
   loadState();
-  
-  //animasi typing
-const titleEl = document.querySelector('.welcome-title');
-if (titleEl) {
-  const text = titleEl.textContent.trim();
-  titleEl.textContent = '';
-  const totalDuration = 1200; // 1.2 detik total ketik
-  const stepDelay = totalDuration / text.length;
 
-  Array.from(text).forEach((char, index) => {
-    const span = document.createElement('span');
-    span.className = 'char';
-    span.textContent = char;
-    span.style.animationDelay = `${index * stepDelay}ms`;
-    titleEl.appendChild(span);
-  });
-}
-  
   if (state.conversations.length === 0) {
     createConversation();
   } else if (!state.activeId) {
