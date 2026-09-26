@@ -365,13 +365,19 @@ button { font-family: inherit; cursor: pointer; }
 
 .welcome-title::after {
   content: '';
-  display: inline-block;
+  position: absolute;
+  top: 50%;
+  right: -10px;
   width: 3px;
   height: 1em;
   background: var(--pulse);
-  margin-left: 4px;
-  vertical-align: middle;
+  transform: translateY(-50%);
   animation: title-blink 0.3s step-end 4 forwards;
+}
+
+.welcome-title.intro-done::after {
+  animation: none;
+  opacity: 0;
 }
 
 .welcome-title .char {
