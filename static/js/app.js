@@ -476,7 +476,7 @@ async function sendMessage(text) {
 
     if (earthImagePayload) {
       fullText = earthImagePayload.ok
-        ? `🌍 Gambar Bumi terbaru dari NASA EPIC (${earthImagePayload.date_only || "-"}).`
+        ? `Gambar Bumi terbaru dari NASA EPIC (${earthImagePayload.date_only || "-"}).`
         : `⚠️ ${earthImagePayload.error || "Gagal mengambil gambar Bumi."}`;
     } else if (!fullText.trim()) {
       fullText = "_Tidak ada respons dari model._";
@@ -506,6 +506,27 @@ function closeMobileSidebar() {
   document.getElementById("sidebar").classList.remove("open");
 }
 
+function typeWelcomeTitle() {
+  const titleEl = document.querySelector(".welcome-title");
+  if (!titleEl) return;
+
+  const fullText = "ZUPIUM";
+  titleEl.textContent = ""; // Kosongkan teks awal
+
+  // Durasi pengetikan 1.2 detik untuk 6 huruf (200ms per huruf)
+  let index = 0;
+  const speed = 100; 
+
+  const interval = setInterval(() => {
+    if (index < fullText.length) {
+      titleEl.textContent += fullText[index];
+      index++;
+    } else {
+      clearInterval(interval);
+    }
+  }, speed);
+}
+
 function autoGrowTextarea(el) {
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 140) + "px";
@@ -514,7 +535,8 @@ function autoGrowTextarea(el) {
 function init() {
   initStarfield();
   loadState();
-
+  typeWelcomeTitle()
+  
   if (state.conversations.length === 0) {
     createConversation();
   } else if (!state.activeId) {
