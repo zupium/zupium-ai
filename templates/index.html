@@ -174,13 +174,17 @@
           autocomplete="off"
         ></textarea>
         <button type="submit" class="send-btn" id="sendBtn" aria-label="Kirim pesan">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <span class="send-btn-ring"></span>
+          <svg class="icon-send" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
+          <svg class="icon-stop" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
+          </svg>
         </button>
       </div>
-      <p class="composer-hint">ZUPIUM bisa saja salah. Periksa kembali informasi yang diberikan ZUPIUM
+      <p class="composer-hint" id="composerHint">ZUPIUM bisa saja salah. Periksa kembali informasi yang diberikan ZUPIUM
       </p>
     </form>
   </main>
