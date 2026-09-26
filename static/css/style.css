@@ -357,7 +357,6 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--pulse);
   -webkit-background-clip: text;
   background-clip: text;
-  color: transparent;
   display: inline-block;
   position: relative;
 }
