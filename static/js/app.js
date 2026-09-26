@@ -517,14 +517,19 @@ function init() {
     const text = titleEl.textContent.trim();
     titleEl.textContent = '';
     const totalDuration = 1200; // 1.2 detik total ketik
-    const stepDelay = totalDuration / text.length;
+    const chars = Array.from(text);
+    const stepDelay = totalDuration / chars.length;
 
-    Array.from(text).forEach((char, index) => {
-      const span = document.createElement('span');
-      span.className = 'char';
-      span.textContent = char;
-      span.style.animationDelay = `${index * stepDelay}ms`;
-      titleEl.appendChild(span);
+    // Tambahkan huruf satu per satu secara nyata ke DOM (bukan sekaligus
+    // lalu disembunyikan pakai opacity), supaya lebar elemen bertambah
+    // seiring huruf muncul dan kursor (::after) selalu ikut di ujungnya.
+    chars.forEach((char, index) => {
+      setTimeout(() => {
+        const span = document.createElement('span');
+        span.className = 'char';
+        span.textContent = char;
+        titleEl.appendChild(span);
+      }, index * stepDelay);
     });
   }
 
