@@ -506,27 +506,6 @@ function closeMobileSidebar() {
   document.getElementById("sidebar").classList.remove("open");
 }
 
-function typeWelcomeTitle() {
-  const titleEl = document.querySelector(".welcome-title");
-  if (!titleEl) return;
-
-  const fullText = "ZUPIUM";
-  titleEl.textContent = ""; // Kosongkan teks awal
-
-  // Durasi pengetikan 1.2 detik untuk 6 huruf (200ms per huruf)
-  let index = 0;
-  const speed = 100; 
-
-  const interval = setInterval(() => {
-    if (index < fullText.length) {
-      titleEl.textContent += fullText[index];
-      index++;
-    } else {
-      clearInterval(interval);
-    }
-  }, speed);
-}
-
 function autoGrowTextarea(el) {
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 140) + "px";
@@ -535,7 +514,23 @@ function autoGrowTextarea(el) {
 function init() {
   initStarfield();
   loadState();
-  typeWelcomeTitle()
+  
+  //animasi typing
+const titleEl = document.querySelector('.welcome-title');
+if (titleEl) {
+  const text = titleEl.textContent.trim();
+  titleEl.textContent = '';
+  const totalDuration = 1200; // 1.2 detik total ketik
+  const stepDelay = totalDuration / text.length;
+
+  Array.from(text).forEach((char, index) => {
+    const span = document.createElement('span');
+    span.className = 'char';
+    span.textContent = char;
+    span.style.animationDelay = `${index * stepDelay}ms`;
+    titleEl.appendChild(span);
+  });
+}
   
   if (state.conversations.length === 0) {
     createConversation();
