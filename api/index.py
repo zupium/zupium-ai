@@ -41,8 +41,8 @@ from groq import Groq
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-TEXT_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
-VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
+TEXT_MODEL = os.environ.get("GROQ_MODEL")
+VISION_MODEL = os.environ.get("GROQ_VISION_MODEL")
 
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
