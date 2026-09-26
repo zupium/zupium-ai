@@ -353,11 +353,7 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 900;
   letter-spacing: 0.2em;
   margin: 0 auto;
-  background: var(--pulse);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  color: var(--pulse);
   display: inline-block;
   position: relative;
 }
@@ -801,6 +797,9 @@ button { font-family: inherit; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
+/* =========================================================
+   INPUT FIELD AGAR TIDAK TENGGELAM
+   ========================================================= */
 
 /* Pastikan tinggi aplikasi benar-benar pas dengan tinggi layar browser mobile */
 .app {
@@ -808,6 +807,7 @@ button { font-family: inherit; cursor: pointer; }
   height: 100dvh; /* Menggunakan Dynamic Viewport Height agar pas di segala browser */
 }
 
+/* Atur ulang padding composer agar presisi dan aman dari navigasi HP */
 .composer {
   flex-shrink: 0;
   padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
