@@ -7,6 +7,12 @@ let state = {
 
 let pendingFiles = [];
 
+// isSending: true selama menunggu/menerima balasan AI
+// mencegah pesan baru dikirim (anti-spam & anti-bentrok)
+let isSending = false;
+let activeAbortController = null;
+let thinkingTimerId = null;
+
 function initStarfield() {
   const sf = document.getElementById("starfield");
   if (!sf) return;
@@ -375,6 +381,11 @@ function clearPendingFiles() {
 }
 
 async function sendMessage(text) {
+  // Pengaman utama: kalau AI masih memproses pesan sebelumnya, abaikan
+  // permintaan kirim baru sama sekali (mencegah perintah bentrok & spam),
+  // terlepas dari state UI (disabled dsb) yang mungkin belum sempat update.
+  if (isSending) return;
+
   let conv = getActiveConv();
   if (!conv) {
     createConversation();
@@ -402,10 +413,29 @@ async function sendMessage(text) {
   const messagesEl = document.getElementById("messages");
   const assistantWrap = buildMessageEl("assistant", "");
   const bubble = assistantWrap.querySelector(".bubble");
-  bubble.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+  bubble.innerHTML = `
+    <div class="thinking-wrap">
+      <div class="typing-dots"><span></span><span></span><span></span></div>
+      <span class="thinking-status">ZUPIUM sedang berpikir...</span>
+    </div>
+  `;
   messagesEl.appendChild(assistantWrap);
   scrollToBottom();
 
+  // Setelah beberapa detik, tampilkan label supaya user tahu ini masih
+  // proses normal, bukan macet/error, kalau modelnya kebetulan lambat.
+  const thinkingStatusEl = bubble.querySelector(".thinking-status");
+  let thinkingSeconds = 0;
+  thinkingTimerId = setInterval(() => {
+    thinkingSeconds += 1;
+    if (!thinkingStatusEl) return;
+    if (thinkingSeconds >= 4) {
+      thinkingStatusEl.textContent = `Masih memproses jawaban... (${thinkingSeconds}d)`;
+      thinkingStatusEl.classList.add("visible");
+    }
+  }, 1000);
+
+  activeAbortController = new AbortController();
   setSending(true);
 
   let fullText = "";
@@ -424,6 +454,7 @@ async function sendMessage(text) {
     const resp = await fetch("/api/chat", {
       method: "POST",
       body: formData,
+      signal: activeAbortController.signal,
     });
 
     if (!resp.ok || !resp.body) {
@@ -483,20 +514,57 @@ async function sendMessage(text) {
       bubble.innerHTML = renderMarkdown(fullText);
     }
   } catch (err) {
-    fullText = `⚠️ Terjadi kesalahan: ${err.message || "tidak bisa menghubungi server."}`;
+    if (err.name === "AbortError") {
+      // Dihentikan manual oleh user lewat tombol stop, bukan error server
+      fullText = fullText.trim()
+        ? fullText + "\n\n_(Dihentikan oleh pengguna)_"
+        : "_Permintaan dihentikan sebelum ZUPIUM selesai menjawab._";
+    } else {
+      fullText = `⚠️ Terjadi kesalahan: ${err.message || "tidak bisa menghubungi server."}`;
+    }
     bubble.innerHTML = renderMarkdown(fullText);
   } finally {
+    clearInterval(thinkingTimerId);
+    thinkingTimerId = null;
+    activeAbortController = null;
     conv.messages.push({ role: "assistant", content: fullText, earthImage: earthImagePayload });
     saveState();
     setSending(false);
   }
 }
 
-function setSending(isSending) {
+// Menghentikan permintaan yang sedang berjalan (dipicu klik tombol "stop")
+function stopGenerating() {
+  if (activeAbortController) {
+    activeAbortController.abort();
+  }
+}
+
+function setSending(sending) {
+  isSending = sending;
   const sendBtn = document.getElementById("sendBtn");
   const input = document.getElementById("messageInput");
-  sendBtn.disabled = isSending;
-  input.disabled = isSending;
+  const hint = document.getElementById("composerHint");
+
+  // Yang dikunci hanya input teks, supaya user tidak bisa mengetik/kirim perintah baru yang bentrok dengan yang sedang diproses
+  input.disabled = sending;
+  sendBtn.classList.toggle("is-sending", sending);
+  sendBtn.setAttribute("aria-label", sending ? "Hentikan respons ZUPIUM" : "Kirim pesan");
+
+  const attachBtn = document.getElementById("attachBtn");
+  if (attachBtn) attachBtn.disabled = sending;
+
+  document.querySelectorAll(".sugg-card").forEach((card) => {
+    card.style.pointerEvents = sending ? "none" : "";
+    card.style.opacity = sending ? "0.5" : "";
+  });
+
+  if (hint) {
+    hint.textContent = sending
+      ? "ZUPIUM sedang memproses jawaban... klik tombol untuk menghentikan."
+      : "ZUPIUM bisa saja salah. Periksa kembali informasi yang diberikan ZUPIUM";
+    hint.classList.toggle("is-thinking", sending);
+  }
 }
 
 function openMobileSidebar() {
@@ -516,13 +584,10 @@ function init() {
   if (titleEl) {
     const text = titleEl.textContent.trim();
     titleEl.textContent = '';
-    const totalDuration = 1000; // 1.2 detik total ketik
+    const totalDuration = 1000; // 1 detik total ketik
     const chars = Array.from(text);
     const stepDelay = totalDuration / chars.length;
 
-    // Tambahkan huruf satu per satu secara nyata ke DOM (bukan sekaligus
-    // lalu disembunyikan pakai opacity), supaya lebar elemen bertambah
-    // seiring huruf muncul dan kursor (::after) selalu ikut di ujungnya.
     chars.forEach((char, index) => {
       setTimeout(() => {
         const span = document.createElement('span');
@@ -579,6 +644,15 @@ function init() {
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
+
+    // Tombol kirim berfungsi ganda: kalau AI sedang memproses, klik/enter
+    // di sini artinya "hentikan", bukan kirim pesan baru. Ini mencegah
+    // perintah baru bentrok dengan yang masih berjalan.
+    if (isSending) {
+      stopGenerating();
+      return;
+    }
+
     const text = input.value.trim();
     if (!text && pendingFiles.length === 0) return;
     input.value = "";
@@ -588,6 +662,7 @@ function init() {
 
   document.querySelectorAll(".sugg-card").forEach((card) => {
     card.addEventListener("click", () => {
+      if (isSending) return; // anti-spam: abaikan klik saran saat AI masih memproses
       const prompt = card.dataset.prompt;
       input.value = prompt;
       form.requestSubmit();
