@@ -352,35 +352,41 @@ button { font-family: inherit; cursor: pointer; }
   font-family: var(--font-head);
   font-size: 2rem;
   font-weight: 900;
-  letter-spacing: 0.15em; /* Disesuaikan agar rasio huruf seragam */
+  letter-spacing: 0.2em;
   margin: 0 auto;
-  
   background: var(--pulse);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-
   display: inline-block;
-  white-space: nowrap;
-  overflow: hidden;
-  border-right: 3px solid var(--pulse);
-  box-sizing: border-box;
-  
-  width: 0;
-  /* Menggunakan 6 steps persis */
-  animation: 
-    title-typing 1.2s steps(6, start) forwards,
-    title-blink 0.3s step-end 5 forwards;
+  position: relative;
 }
 
-@keyframes title-typing {
-  from { width: 0; }
-  to { width: 100%; } /* Gunakan 100% agar otomatis mencakup seluruh lebar teks ZUPIUM */
+/* Caret/Kursor yang menempel di ujung kata */
+.welcome-title::after {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  background: var(--pulse);
+  margin-left: 4px;
+  vertical-align: middle;
+  animation: title-blink 0.3s step-end 5 forwards;
+}
+
+.welcome-title .char {
+  opacity: 0;
+  display: inline-block;
+  animation: char-appear 0.05s forwards;
+}
+
+@keyframes char-appear {
+  to { opacity: 1; }
 }
 
 @keyframes title-blink {
-  from, to { border-color: transparent; }
-  50% { border-color: var(--pulse); }
+  from, to { opacity: 0; }
+  50% { opacity: 1; }
 }
 
 .welcome-sub {
