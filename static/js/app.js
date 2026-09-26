@@ -596,6 +596,14 @@ function init() {
         titleEl.appendChild(span);
       }, index * stepDelay);
     });
+
+    // Matikan caret blink secara permanen setelah animasi intro selesai,
+    // supaya tidak menyala lagi saat empty-state ditampilkan ulang
+    // (misalnya setelah klik "+ Obrolan baru").
+    const caretBlinkDuration = 300 * 4; // harus sama dengan CSS title-blink
+    setTimeout(() => {
+      titleEl.classList.add('intro-done');
+    }, totalDuration + caretBlinkDuration + 100);
   }
 
   initStarfield();
