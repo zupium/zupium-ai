@@ -4,11 +4,14 @@ import json
 import base64
 import mimetypes
 from datetime import datetime, timedelta
+from flask import Flask, request, jsonify, render_template, Response, stream_with_context
+import requests
+from groq import Groq
 
-# Tambahkan definisi BASE_DIR
+#DEFINISIKAN BASE_DIR
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Inisialisasi Flask dengan path absolut
+#INISIALISASI APP FLASK
 app = Flask(
     __name__,
     template_folder=os.path.join(BASE_DIR, 'templates'),
