@@ -516,7 +516,7 @@ function init() {
   if (titleEl) {
     const text = titleEl.textContent.trim();
     titleEl.textContent = '';
-    const totalDuration = 1200; // 1.2 detik total ketik
+    const totalDuration = 1000; // 1.2 detik total ketik
     const chars = Array.from(text);
     const stepDelay = totalDuration / chars.length;
 
