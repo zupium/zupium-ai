@@ -28,16 +28,16 @@
 * **NASA Earth Image**
   ZUPIUM dapat mendeteksi permintaan seperti *"gambar Bumi hari ini"* dan mengambil gambar Bumi terbaru melalui **NASA EPIC API**.
 
-* 💬 **Riwayat Percakapan**
+* **Riwayat Percakapan**
   Pengguna dapat membuat, berpindah, dan menghapus percakapan melalui sidebar.
 
-* 📎 **File Attachment**
+* **File Attachment**
   Pengguna dapat melampirkan file langsung melalui antarmuka chat.
 
-* ⚡ **Streaming Response**
+* **Streaming Response**
   Respons AI dapat ditampilkan secara bertahap sehingga terasa lebih cepat dan interaktif.
 
-## 🛠️ Teknologi
+## Teknologi
 
 ZUPIUM dibangun menggunakan beberapa teknologi utama:
 
