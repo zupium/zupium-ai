@@ -1,6 +1,6 @@
 # ZUPIUM AI
 
-**ZUPIUM** adalah AI assistant berbasis web yang dirancang untuk membantu pengguna dalam berbagai kebutuhan, mulai dari menjawab pertanyaan, menganalisis gambar dan dokumen, membantu pemrograman, hingga menyajikan informasi visual dari NASA. ZUPIUM menggunakan **Groq API** sebagai mesin AI dan dibangun dengan **Flask** sehingga ringan serta mudah dikembangkan dan di-deploy.
+**ZUPIUM** adalah AI assistant berbasis web yang dirancang untuk membantu pengguna dalam berbagai kebutuhan, mulai dari menjawab pertanyaan, menganalisis gambar dan dokumen, membantu pemrograman, hingga menyajikan informasi visual dari NASA. ZUPIUM dibangun dengan **Flask** sehingga ringan serta mudah dikembangkan dan di-deploy.
 
 ## Fitur Unggulan
 
