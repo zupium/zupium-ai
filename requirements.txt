@@ -1,6 +1,7 @@
 Flask
 requests
 groq
+cachetools
 pypdf
 python-docx
 openpyxl
