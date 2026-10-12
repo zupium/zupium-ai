@@ -15,6 +15,9 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 
+<!-- Supabase Client Library untuk Auth & Database -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -84,9 +87,46 @@
 
   <main class="main">
     <header class="topbar">
-      <button class="icon-btn" id="openSidebarBtn" aria-label="Buka sidebar">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-      </button>
+      <div class="topbar-left">
+        <button class="icon-btn" id="openSidebarBtn" aria-label="Buka sidebar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+
+        <!-- Status Auth Kiri Atas: Guest otomatis / Member -->
+        <div class="auth-topbar-wrap" id="authTopbarWrap">
+          <button class="auth-pill-btn" id="authPillBtn" type="button" aria-haspopup="dialog" aria-label="Menu Akun Pengguna">
+            <span class="auth-avatar-icon" id="authAvatarIcon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </span>
+            <div class="auth-pill-text" id="authPillText">
+              <span class="auth-role-tag" id="authRoleTag">GUEST</span>
+              <span class="auth-user-name" id="authUserName">Masuk / Daftar</span>
+            </div>
+            <svg class="auth-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+
+          <!-- User Menu Dropdown (muncul saat user sudah login & klik tombol) -->
+          <div class="user-menu-popover" id="userMenuPopover">
+            <div class="user-menu-header">
+              <div class="user-menu-avatar" id="popoverAvatar">G</div>
+              <div class="user-menu-meta">
+                <span class="user-menu-name" id="popoverName">Pengguna</span>
+                <span class="user-menu-email" id="popoverEmail">user@example.com</span>
+              </div>
+            </div>
+            <div class="user-menu-divider"></div>
+            <div class="user-menu-status">
+              <span class="pulse-indicator"></span>
+              <span id="popoverEngineStatus">Multi-Key Engine (3 API Aktif)</span>
+            </div>
+            <button class="user-menu-item user-menu-logout" id="logoutBtn" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Keluar (Logout)
+            </button>
+          </div>
+        </div>
+      </div>
+
       <h1 class="conv-title" id="convTitle">Obrolan baru</h1>
       <button class="icon-btn" id="clearChatBtn" title="Hapus obrolan ini" aria-label="Hapus obrolan">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0-1 14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 6h12Z"/></svg>
@@ -188,6 +228,72 @@
       </p>
     </form>
   </main>
+</div>
+
+<!-- Modal Login / Register Futuristik ZUPIUM -->
+<div class="auth-modal-overlay" id="authModalOverlay" aria-hidden="true">
+  <div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+    <button class="auth-modal-close" id="closeAuthModalBtn" type="button" aria-label="Tutup modal">✕</button>
+    
+    <div class="auth-modal-header">
+      <div class="auth-modal-badge">
+        <span class="status-pulse-dot"></span> ZUPIUM NEURAL ACCESS
+      </div>
+      <h2 class="auth-modal-title" id="authModalTitle">Masuk ke ZUPIUM</h2>
+      <p class="auth-modal-sub" id="authModalSub">Daftar atau masuk untuk jatah token prioritas & performa multi-key tanpa berebut.</p>
+    </div>
+
+    <!-- Tab Selector: Masuk vs Daftar -->
+    <div class="auth-tabs">
+      <button class="auth-tab-btn active" id="tabLoginBtn" type="button">Masuk (Login)</button>
+      <button class="auth-tab-btn" id="tabRegisterBtn" type="button">Daftar Akun Baru</button>
+    </div>
+
+    <!-- Feedback Message (Error / Success) -->
+    <div class="auth-alert" id="authAlert" style="display: none;"></div>
+
+    <!-- Form Login -->
+    <form class="auth-form" id="loginForm">
+      <div class="auth-field">
+        <label for="loginEmail">Email</label>
+        <input type="email" id="loginEmail" placeholder="nama@email.com" required autocomplete="email">
+      </div>
+      <div class="auth-field">
+        <label for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="auth-submit-btn" id="loginSubmitBtn">
+        <span>Masuk Sekarang</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+    </form>
+
+    <!-- Form Register -->
+    <form class="auth-form" id="registerForm" style="display: none;">
+      <div class="auth-field">
+        <label for="regName">Nama Panggilan</label>
+        <input type="text" id="regName" placeholder="Contoh: Gandhi" required autocomplete="name">
+      </div>
+      <div class="auth-field">
+        <label for="regEmail">Email</label>
+        <input type="email" id="regEmail" placeholder="nama@email.com" required autocomplete="email">
+      </div>
+      <div class="auth-field">
+        <label for="regPassword">Password (Minimal 6 karakter)</label>
+        <input type="password" id="regPassword" placeholder="••••••••" required minlength="6" autocomplete="new-password">
+      </div>
+      <button type="submit" class="auth-submit-btn" id="registerSubmitBtn">
+        <span>Buat Akun Sekarang</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+    </form>
+
+    <div class="auth-modal-footer">
+      <button type="button" class="guest-bypass-btn" id="continueGuestBtn">
+        Tetap gunakan sebagai <strong>Tamu (Guest)</strong>
+      </button>
+    </div>
+  </div>
 </div>
 
 <script src="/static/js/app.js"></script>
