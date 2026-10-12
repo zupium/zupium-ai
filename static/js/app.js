@@ -608,6 +608,7 @@ function init() {
 
   initStarfield();
   loadState();
+  initAuth();
 
   if (state.conversations.length === 0) {
     createConversation();
@@ -715,6 +716,361 @@ function init() {
     if (fileInput.files.length) addPendingFiles(fileInput.files);
     fileInput.value = "";
   });
+}
+
+// =========================================================================
+// SISTEM AUTH & USER MANAGEMENT (GUEST & MEMBER)
+// =========================================================================
+const AUTH_STORAGE_KEY = "zupium_user_auth_v1";
+
+let supabaseClient = null;
+let currentUser = null; // null jika Guest, atau { id, email, name, role: 'member' }
+let serverConfig = {
+  supabase_url: "",
+  supabase_anon_key: "",
+  groq_keys_count: 3,
+};
+
+async function initAuth() {
+  try {
+    const res = await fetch("/api/config");
+    if (res.ok) {
+      serverConfig = await res.json();
+    }
+  } catch (e) {
+    console.warn("Gagal mengambil /api/config:", e);
+  }
+
+  // 1. Cek apakah Supabase dikonfigurasi dari backend
+  if (
+    serverConfig.supabase_url &&
+    serverConfig.supabase_anon_key &&
+    window.supabase
+  ) {
+    try {
+      supabaseClient = window.supabase.createClient(
+        serverConfig.supabase_url,
+        serverConfig.supabase_anon_key
+      );
+
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session?.user) {
+        currentUser = {
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.display_name || session.user.email.split("@")[0],
+          role: "member",
+        };
+      }
+
+      supabaseClient.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          currentUser = {
+            id: session.user.id,
+            email: session.user.email,
+            name: session.user.user_metadata?.display_name || session.user.email.split("@")[0],
+            role: "member",
+          };
+        } else {
+          currentUser = null;
+        }
+        updateAuthUI();
+      });
+    } catch (err) {
+      console.warn("Inisialisasi Supabase gagal:", err);
+    }
+  }
+
+  // 2. Jika tidak ada session Supabase, cek local storage (fallback offline / local)
+  if (!currentUser) {
+    try {
+      const saved = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (saved) {
+        currentUser = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn("Gagal membaca local auth:", e);
+    }
+  }
+
+  updateAuthUI();
+  setupAuthEventListeners();
+}
+
+function updateAuthUI() {
+  const roleTag = document.getElementById("authRoleTag");
+  const userName = document.getElementById("authUserName");
+  const avatarIcon = document.getElementById("authAvatarIcon");
+  const popoverAvatar = document.getElementById("popoverAvatar");
+  const popoverName = document.getElementById("popoverName");
+  const popoverEmail = document.getElementById("popoverEmail");
+  const popoverEngineStatus = document.getElementById("popoverEngineStatus");
+
+  const keyCount = serverConfig.groq_keys_count || 3;
+  if (popoverEngineStatus) {
+    popoverEngineStatus.textContent = `Multi-Key Engine (${keyCount} API Aktif)`;
+  }
+
+  if (currentUser) {
+    const displayName = currentUser.name || currentUser.email.split("@")[0];
+    const initial = displayName.charAt(0).toUpperCase();
+
+    if (roleTag) {
+      roleTag.textContent = "MEMBER";
+      roleTag.className = "auth-role-tag member";
+    }
+    if (userName) userName.textContent = displayName;
+    if (avatarIcon) {
+      avatarIcon.innerHTML = `<span style="font-weight:700;">${initial}</span>`;
+      avatarIcon.style.background = "linear-gradient(135deg, var(--pulse), var(--nova))";
+      avatarIcon.style.color = "#fff";
+    }
+    if (popoverAvatar) popoverAvatar.textContent = initial;
+    if (popoverName) popoverName.textContent = displayName;
+    if (popoverEmail) popoverEmail.textContent = currentUser.email || "";
+  } else {
+    if (roleTag) {
+      roleTag.textContent = "GUEST";
+      roleTag.className = "auth-role-tag guest";
+    }
+    if (userName) userName.textContent = "Masuk / Daftar";
+    if (avatarIcon) {
+      avatarIcon.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+      avatarIcon.style.background = "";
+      avatarIcon.style.color = "";
+    }
+  }
+}
+
+function openAuthModal() {
+  const overlay = document.getElementById("authModalOverlay");
+  const alertEl = document.getElementById("authAlert");
+  if (alertEl) {
+    alertEl.style.display = "none";
+    alertEl.textContent = "";
+  }
+  if (overlay) {
+    overlay.classList.add("open");
+    overlay.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeAuthModal() {
+  const overlay = document.getElementById("authModalOverlay");
+  if (overlay) {
+    overlay.classList.remove("open");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+}
+
+function showAuthAlert(message, type = "error") {
+  const alertEl = document.getElementById("authAlert");
+  if (!alertEl) return;
+  alertEl.className = `auth-alert ${type}`;
+  alertEl.textContent = message;
+  alertEl.style.display = "block";
+}
+
+function setupAuthEventListeners() {
+  const pillBtn = document.getElementById("authPillBtn");
+  const topbarWrap = document.getElementById("authTopbarWrap");
+  const popover = document.getElementById("userMenuPopover");
+  const closeBtn = document.getElementById("closeAuthModalBtn");
+  const continueGuestBtn = document.getElementById("continueGuestBtn");
+  const overlay = document.getElementById("authModalOverlay");
+  const tabLogin = document.getElementById("tabLoginBtn");
+  const tabRegister = document.getElementById("tabRegisterBtn");
+  const loginForm = document.getElementById("loginForm");
+  const registerForm = document.getElementById("registerForm");
+  const modalTitle = document.getElementById("authModalTitle");
+  const modalSub = document.getElementById("authModalSub");
+  const logoutBtn = document.getElementById("logoutBtn");
+
+  if (pillBtn) {
+    pillBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!currentUser) {
+        openAuthModal();
+      } else {
+        const isOpen = popover?.classList.contains("open");
+        if (isOpen) {
+          popover.classList.remove("open");
+          topbarWrap?.classList.remove("menu-open");
+        } else {
+          popover?.classList.add("open");
+          topbarWrap?.classList.add("menu-open");
+        }
+      }
+    });
+  }
+
+  // Tutup user dropdown popover saat klik di luar
+  document.addEventListener("click", (e) => {
+    if (popover && !popover.contains(e.target) && e.target !== pillBtn && !pillBtn?.contains(e.target)) {
+      popover.classList.remove("open");
+      topbarWrap?.classList.remove("menu-open");
+    }
+  });
+
+  if (closeBtn) closeBtn.addEventListener("click", closeAuthModal);
+  if (continueGuestBtn) continueGuestBtn.addEventListener("click", closeAuthModal);
+
+  if (overlay) {
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeAuthModal();
+    });
+  }
+
+  // Switch Tabs: Masuk (Login) vs Daftar (Register)
+  if (tabLogin && tabRegister) {
+    tabLogin.addEventListener("click", () => {
+      tabLogin.classList.add("active");
+      tabRegister.classList.remove("active");
+      loginForm.style.display = "flex";
+      registerForm.style.display = "none";
+      modalTitle.textContent = "Masuk ke ZUPIUM";
+      modalSub.textContent = "Daftar atau masuk untuk jatah token prioritas & performa multi-key tanpa berebut.";
+      const alertEl = document.getElementById("authAlert");
+      if (alertEl) alertEl.style.display = "none";
+    });
+
+    tabRegister.addEventListener("click", () => {
+      tabRegister.classList.add("active");
+      tabLogin.classList.remove("active");
+      loginForm.style.display = "none";
+      registerForm.style.display = "flex";
+      modalTitle.textContent = "Daftar Akun Baru";
+      modalSub.textContent = "Daftarkan akun untuk mendapatkan identitas dan kuota chat eksklusif.";
+      const alertEl = document.getElementById("authAlert");
+      if (alertEl) alertEl.style.display = "none";
+    });
+  }
+
+  // Handle Submit Form Login
+  if (loginForm) {
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("loginEmail").value.trim();
+      const password = document.getElementById("loginPassword").value;
+      const submitBtn = document.getElementById("loginSubmitBtn");
+
+      submitBtn.disabled = true;
+      const btnSpan = submitBtn.querySelector("span");
+      const originalText = btnSpan ? btnSpan.textContent : "Masuk Sekarang";
+      if (btnSpan) btnSpan.textContent = "Memverifikasi...";
+
+      try {
+        if (supabaseClient) {
+          const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email,
+            password,
+          });
+          if (error) throw error;
+          currentUser = {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.user_metadata?.display_name || email.split("@")[0],
+            role: "member",
+          };
+        } else {
+          // Mode fallback jika Supabase belum dihubungkan di .env
+          currentUser = {
+            id: "user_" + Date.now(),
+            email: email,
+            name: email.split("@")[0],
+            role: "member",
+          };
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(currentUser));
+        }
+
+        updateAuthUI();
+        showAuthAlert("Berhasil masuk! Mengaktifkan akses prioritas...", "success");
+        setTimeout(() => {
+          closeAuthModal();
+          loginForm.reset();
+        }, 800);
+      } catch (err) {
+        showAuthAlert(err.message || "Gagal masuk. Periksa email & password Anda.", "error");
+      } finally {
+        submitBtn.disabled = false;
+        if (btnSpan) btnSpan.textContent = originalText;
+      }
+    });
+  }
+
+  // Handle Submit Form Register
+  if (registerForm) {
+    registerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("regName").value.trim();
+      const email = document.getElementById("regEmail").value.trim();
+      const password = document.getElementById("regPassword").value;
+      const submitBtn = document.getElementById("registerSubmitBtn");
+
+      submitBtn.disabled = true;
+      const btnSpan = submitBtn.querySelector("span");
+      const originalText = btnSpan ? btnSpan.textContent : "Buat Akun Sekarang";
+      if (btnSpan) btnSpan.textContent = "Mendaftarkan...";
+
+      try {
+        if (supabaseClient) {
+          const { data, error } = await supabaseClient.auth.signUp({
+            email,
+            password,
+            options: {
+              data: { display_name: name },
+            },
+          });
+          if (error) throw error;
+          currentUser = {
+            id: data.user?.id || "user_" + Date.now(),
+            email,
+            name: name || email.split("@")[0],
+            role: "member",
+          };
+        } else {
+          // Mode fallback
+          currentUser = {
+            id: "user_" + Date.now(),
+            email: email,
+            name: name || email.split("@")[0],
+            role: "member",
+          };
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(currentUser));
+        }
+
+        updateAuthUI();
+        showAuthAlert(`Akun berhasil dibuat! Selamat datang, ${currentUser.name}!`, "success");
+        setTimeout(() => {
+          closeAuthModal();
+          registerForm.reset();
+        }, 900);
+      } catch (err) {
+        showAuthAlert(err.message || "Gagal mendaftar akun baru. Coba lagi.", "error");
+      } finally {
+        submitBtn.disabled = false;
+        if (btnSpan) btnSpan.textContent = originalText;
+      }
+    });
+  }
+
+  // Handle Logout
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      if (supabaseClient) {
+        try {
+          await supabaseClient.auth.signOut();
+        } catch (e) {
+          console.warn("Logout error:", e);
+        }
+      }
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      currentUser = null;
+      popover?.classList.remove("open");
+      topbarWrap?.classList.remove("menu-open");
+      updateAuthUI();
+    });
+  }
 }
 
 document.addEventListener("DOMContentLoaded", init);
