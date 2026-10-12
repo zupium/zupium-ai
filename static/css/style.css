@@ -307,6 +307,13 @@ button { font-family: inherit; cursor: pointer; }
   flex-shrink: 0;
 }
 
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 #openSidebarBtn { display: none; }
 
 .conv-title {
@@ -993,3 +1000,499 @@ button { font-family: inherit; cursor: pointer; }
 @media (max-width: 560px) {
   .earth-card { max-width: 100%; }
 }
+
+/* =========================================================
+   SISTEM AUTH & GUEST / MEMBER UI (POJOK KIRI ATAS)
+   ========================================================= */
+
+.auth-topbar-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.auth-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(17, 28, 53, 0.7);
+  border: 1px solid rgba(0, 200, 255, 0.25);
+  border-radius: 999px;
+  padding: 5px 12px 5px 8px;
+  color: var(--star);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 10px rgba(0, 200, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.auth-pill-btn:hover {
+  border-color: var(--pulse);
+  background: rgba(17, 28, 53, 0.95);
+  box-shadow: 0 0 16px rgba(0, 200, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.auth-avatar-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(0, 200, 255, 0.2), rgba(123, 79, 255, 0.3));
+  border: 1px solid rgba(0, 200, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pulse);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.auth-pill-text {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.auth-role-tag {
+  font-family: var(--font-head);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.auth-role-tag.guest {
+  background: rgba(90, 106, 138, 0.25);
+  color: #a0aec0;
+  border: 1px solid rgba(90, 106, 138, 0.4);
+}
+
+.auth-role-tag.member {
+  background: rgba(0, 255, 170, 0.15);
+  color: var(--success);
+  border: 1px solid rgba(0, 255, 170, 0.4);
+  box-shadow: 0 0 8px rgba(0, 255, 170, 0.25);
+}
+
+.auth-user-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--star);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-caret {
+  color: var(--dim);
+  transition: transform 0.2s ease;
+  margin-left: -2px;
+}
+
+.auth-topbar-wrap.menu-open .auth-caret {
+  transform: rotate(180deg);
+}
+
+/* User Menu Popover Dropdown */
+.user-menu-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  min-width: 240px;
+  background: rgba(8, 13, 26, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 200, 255, 0.25);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 200, 255, 0.12);
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 200;
+  animation: fadeUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.user-menu-popover.open {
+  display: flex;
+}
+
+.user-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px;
+}
+
+.user-menu-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--pulse), var(--nova));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-family: var(--font-head);
+  font-size: 0.9rem;
+  box-shadow: 0 0 10px rgba(0, 200, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.user-menu-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.user-menu-name {
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--star);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-email {
+  font-size: 0.72rem;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-divider {
+  height: 1px;
+  background: rgba(0, 200, 255, 0.12);
+  margin: 2px 0;
+}
+
+.user-menu-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--success);
+  padding: 4px 6px;
+  background: rgba(0, 255, 170, 0.08);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0, 255, 170, 0.2);
+}
+
+.pulse-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+  animation: pulse-dot 2s infinite;
+}
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--star);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  text-align: left;
+}
+
+.user-menu-logout {
+  color: var(--danger);
+  border: 1px solid rgba(255, 68, 102, 0.2);
+  background: rgba(255, 68, 102, 0.05);
+  font-weight: 500;
+}
+
+.user-menu-logout:hover {
+  background: rgba(255, 68, 102, 0.18);
+  border-color: var(--danger);
+  box-shadow: 0 0 12px rgba(255, 68, 102, 0.2);
+}
+
+/* =========================================================
+   AUTH MODAL (FUTURISTIK CYBERPUNK)
+   ========================================================= */
+
+.auth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 4, 10, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 3000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.auth-modal-overlay.open {
+  display: flex;
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.auth-modal {
+  background: linear-gradient(165deg, rgba(17, 28, 53, 0.96) 0%, rgba(8, 13, 26, 0.99) 100%);
+  border: 1px solid rgba(0, 200, 255, 0.35);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 200, 255, 0.18);
+  width: 100%;
+  max-width: 420px;
+  padding: 30px;
+  position: relative;
+  animation: scaleUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.94) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.auth-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--rim);
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.85rem;
+}
+
+.auth-modal-close:hover {
+  color: var(--star);
+  border-color: var(--pulse);
+  background: rgba(0, 200, 255, 0.1);
+}
+
+.auth-modal-header {
+  text-align: center;
+  margin-bottom: 22px;
+}
+
+.auth-modal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-head);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  color: var(--pulse);
+  background: rgba(0, 200, 255, 0.08);
+  border: 1px solid rgba(0, 200, 255, 0.25);
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
+
+.status-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pulse);
+  box-shadow: 0 0 6px var(--pulse);
+  animation: pulse-dot 1.8s infinite;
+}
+
+.auth-modal-title {
+  font-family: var(--font-head);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--star);
+  margin: 0 0 8px;
+}
+
+.auth-modal-sub {
+  font-size: 0.82rem;
+  color: var(--dim);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 6px;
+  background: rgba(8, 13, 26, 0.7);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--rim);
+  margin-bottom: 20px;
+}
+
+.auth-tab-btn {
+  flex: 1;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-tab-btn.active {
+  background: rgba(0, 200, 255, 0.15);
+  color: var(--pulse);
+  font-weight: 600;
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  box-shadow: 0 0 12px rgba(0, 200, 255, 0.15);
+}
+
+.auth-alert {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin-bottom: 16px;
+  display: none;
+}
+
+.auth-alert.error {
+  display: block;
+  background: rgba(255, 68, 102, 0.12);
+  border: 1px solid rgba(255, 68, 102, 0.35);
+  color: #ff99aa;
+}
+
+.auth-alert.success {
+  display: block;
+  background: rgba(0, 255, 170, 0.12);
+  border: 1px solid rgba(0, 255, 170, 0.35);
+  color: #88ffcc;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-field label {
+  font-size: 0.76rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--dim);
+}
+
+.auth-field input {
+  width: 100%;
+  padding: 11px 14px;
+  background: rgba(8, 13, 26, 0.8);
+  border: 1px solid var(--rim);
+  border-radius: var(--radius-sm);
+  color: var(--star);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.auth-field input:focus {
+  border-color: var(--pulse);
+  box-shadow: 0 0 12px rgba(0, 200, 255, 0.25);
+  background: rgba(17, 28, 53, 0.6);
+}
+
+.auth-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, #00c8ff 0%, #7b4fff 100%);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 0 18px rgba(0, 200, 255, 0.3);
+  margin-top: 6px;
+}
+
+.auth-submit-btn:hover {
+  box-shadow: 0 0 24px rgba(0, 200, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.auth-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.auth-modal-footer {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: center;
+}
+
+.guest-bypass-btn {
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.2s;
+  padding: 4px;
+}
+
+.guest-bypass-btn:hover {
+  color: var(--pulse);
+}
+
+/* Responsiveness on small screens */
+@media (max-width: 600px) {
+  .auth-user-name {
+    display: none; /* di HP cukup tampilkan icon + badge GUEST / MEMBER */
+  }
+  .auth-pill-btn {
+    padding: 5px 8px;
+  }
+  .user-menu-popover {
+    left: auto;
+    right: 0;
+  }
+}
+
