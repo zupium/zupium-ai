@@ -1,23 +1,28 @@
 import os
 import io
+import re
 import json
 import base64
+import hashlib
 import mimetypes
+import threading
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template, Response, stream_with_context
-import requests
-from groq import Groq
 
-#DEFINISIKAN BASE_DIR
+import requests
+from cachetools import TTLCache
+from flask import Flask, request, jsonify, render_template, Response, stream_with_context
+from groq import Groq, RateLimitError, APIStatusError, APIConnectionError
+
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-#INISIALISASI APP FLASK
 app = Flask(
     __name__,
     template_folder=os.path.join(BASE_DIR, 'templates'),
     static_folder=os.path.join(BASE_DIR, 'static'),
     static_url_path='/static'
 )
+
 try:
     from pypdf import PdfReader
     PYPDF_AVAILABLE = True
@@ -46,18 +51,106 @@ try:
 except ImportError:
     PPTX_AVAILABLE = False
 
-import requests
-from flask import Flask, request, jsonify, render_template, Response, stream_with_context
-from groq import Groq
+#KONFIGURASI
+def _env_int(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
 
-# Perubahan penting: Arahkan template_folder & static_folder ke direktori root (satu tingkat di luar folder api/)
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
+# =========================================================================
+# SISTEM MULTI-KEY POOL & ROTASI CERDAS (GROQ API)
+# =========================================================================
+# Sistem ini secara otomatis memuat beberapa Groq API Key, merotasikannya
+# secara bergantian (Round Robin), dan melakukan FAILOVER OTOMATIS jika
+# salah satu key terkena Rate Limit (HTTP 429).
+#
+# --- CARA MENAMBAH API KEY BARU (HINT) ---
+# Saat ini disiapkan 3 API Key default (GROQ_API_KEY_1, GROQ_API_KEY_2, GROQ_API_KEY_3).
+# Jika Anda ingin menambah menjadi 4, 5, atau lebih API Key di masa depan:
+# 1. Cukup buka dashboard Vercel (atau file .env Anda), lalu tambahkan:
+#       GROQ_API_KEY_4=gsk_...
+#       GROQ_API_KEY_5=gsk_...
+# 2. Atau Anda juga bisa menggunakan format satu baris (dipisah koma):
+#       GROQ_API_KEYS=gsk_key1,gsk_key2,gsk_key3,gsk_key4,gsk_key5
+# Sistem di bawah ini SUDAH OTOMATIS mendeteksi hingga GROQ_API_KEY_20 tanpa
+# perlu Anda mengubah baris kode apa pun lagi!
+# =========================================================================
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-TEXT_MODEL = os.environ.get("GROQ_MODEL")
-VISION_MODEL = os.environ.get("GROQ_VISION_MODEL")
+def load_groq_api_keys():
+    keys = []
 
-client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+    # 1. Cek dari format satu baris GROQ_API_KEYS (dipisah koma)
+    comma_keys = os.environ.get("GROQ_API_KEYS", "")
+    if comma_keys:
+        for k in comma_keys.split(","):
+            cleaned = k.strip()
+            if cleaned and cleaned not in keys:
+                keys.append(cleaned)
+
+    # 2. Cek nomor urut: GROQ_API_KEY_1 s/d GROQ_API_KEY_20
+    # (HINT: Anda tinggal buat env var GROQ_API_KEY_4, GROQ_API_KEY_5, dst. di Vercel / .env!)
+    for i in range(1, 21):
+        k = (os.environ.get(f"GROQ_API_KEY_{i}") or "").strip()
+        if k and k not in keys:
+            keys.append(k)
+
+    # 3. Fallback ke GROQ_API_KEY tunggal lama (jika belum memakai penomoran)
+    single_key = (os.environ.get("GROQ_API_KEY") or "").strip()
+    if single_key and single_key not in keys:
+        keys.append(single_key)
+
+    return keys
+
+GROQ_KEYS_POOL = load_groq_api_keys()
+
+TEXT_MODEL = os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b"
+VISION_MODEL = os.environ.get("GROQ_VISION_MODEL") or "qwen/qwen3.8-27b"
+
+# max_retries=0: saat key kena 429, tidak menunda lama dengan exponential backoff SDK,
+# melainkan langsung memicu auto-fallback cerdas ke key berikutnya di pool kita.
+GROQ_CLIENT_POOL = [
+    Groq(api_key=key, max_retries=0) for key in GROQ_KEYS_POOL
+]
+
+# Backward compatibility jika ada bagian kode yang memanggil 'client' langsung
+client = GROQ_CLIENT_POOL[0] if GROQ_CLIENT_POOL else None
+
+_key_rotation_index = 0
+_key_lock = threading.Lock()
+
+def get_next_client_pair():
+    """
+    Mengambil client Groq berikutnya berdasarkan Round-Robin,
+    beserta nomor indeksnya (0-based) dan total key di pool.
+    """
+    global _key_rotation_index
+    if not GROQ_CLIENT_POOL:
+        return None, -1, 0
+    with _key_lock:
+        idx = _key_rotation_index % len(GROQ_CLIENT_POOL)
+        _key_rotation_index = (_key_rotation_index + 1) % len(GROQ_CLIENT_POOL)
+    return GROQ_CLIENT_POOL[idx], idx, len(GROQ_CLIENT_POOL)
+
+# SUPABASE & AUTH CONFIGURATION
+SUPABASE_URL = (os.environ.get("SUPABASE_URL") or "").strip()
+SUPABASE_ANON_KEY = (os.environ.get("SUPABASE_ANON_KEY") or "").strip()
+
+NASA_API_KEY = os.environ.get("NASA_API_KEY")
+
+#sliding window & pembatasan ukuran payload
+MAX_HISTORY_MESSAGES = _env_int("MAX_HISTORY_MESSAGES", 6)          #pesan terakhir yang dikirim ke Groq
+MAX_HISTORY_CHARS_PER_MSG = _env_int("MAX_HISTORY_CHARS_PER_MSG", 3000)
+MAX_FILE_CHARS = _env_int("MAX_FILE_CHARS", 12000)                  #batas teks per file
+MAX_TOTAL_FILE_CHARS = _env_int("MAX_TOTAL_FILE_CHARS", 24000)      #batas total teks semua file per request
+MAX_IMAGES_PER_REQUEST = _env_int("MAX_IMAGES_PER_REQUEST", 3)      #batas 3 gambar
+MAX_OUTPUT_TOKENS = _env_int("MAX_OUTPUT_TOKENS", 2048)
+
+#cache in-memory
+CACHE_TTL_SECONDS = _env_int("CACHE_TTL_SECONDS", 3600)
+CACHE_MAX_ENTRIES = _env_int("CACHE_MAX_ENTRIES", 300)
+CACHE_MAX_ANSWER_CHARS = _env_int("CACHE_MAX_ANSWER_CHARS", 20000)
+
 
 NASA_API_KEY = os.environ.get("NASA_API_KEY")
 
@@ -153,7 +246,10 @@ def get_earth_today_payload():
         return {"ok": False, "error": str(e)}
     except Exception as e:
         return {"ok": False, "error": f"Terjadi kesalahan tak terduga saat mengambil data NASA: {e}"}
-
+'''
+PENTING (Groq prompt caching): prompt ini HARUS statis. Jangan sisipkan timestamp, tanggal,
+nama user, ID acak, atau nilai dinamis apa pun. Satu karakter berbeda = cache miss
+'''
 SYSTEM_PROMPT = (
     "Kamu adalah ZUPIUM, asisten AI cerdas, serba bisa, ramah, dan to the point. "
     "Jawab dalam Bahasa Indonesia kecuali user memakai bahasa lain. "
@@ -295,7 +391,7 @@ def index():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "ok", "model": TEXT_MODEL, "configured": bool(GROQ_API_KEY)})
+    return jsonify({"status": "ok", "model": TEXT_MODEL, "vision_model": VISION_MODEL, "configured": bool(GROQ_API_KEY), "cache_entries": len(_response_cache)})
 
 @app.route("/api/earth-today")
 def earth_today():
@@ -338,19 +434,119 @@ def build_user_content(user_message, attachments):
 
     return content, True
 
+
+#SOLUSI 2:SLIDING WINDOW UNTUK RIWAYAT CHA
+#pesan assistant berikut adalah pesan error/placeholder dari frontend, tidak berguna sebagai konteks
+_NOISE_PREFIXES = ("\u26a0\ufe0f", "_Tidak ada respons", "_Permintaan dihentikan")
+
+def _content_to_text(content):
+    """Ambil teksnya saja. Bagian image_url (base64) SELALU dibuang dari riwayat."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            p.get("text", "")
+            for p in content
+            if isinstance(p, dict) and p.get("type") == "text"
+        )
+    return ""
+
+def trim_history(raw_history):
+    """Bersihkan riwayat lalu ambil MAX_HISTORY_MESSAGES pesan terakhir(teks saja)"""
+    if not isinstance(raw_history, list) or MAX_HISTORY_MESSAGES <= 0:
+        return []
+
+    clean = []
+    for m in raw_history:
+        if not isinstance(m, dict) or m.get("role") not in ("user", "assistant"):
+            continue
+        text = _content_to_text(m.get("content")).strip()
+        if not text:
+            continue
+        if m["role"] == "assistant" and text.startswith(_NOISE_PREFIXES):
+            #buang juga pertanyaan user yang menghasilkan error tersebut.
+            if clean and clean[-1]["role"] == "user":
+                clean.pop()
+            continue
+        if len(text) > MAX_HISTORY_CHARS_PER_MSG:
+            text = text[:MAX_HISTORY_CHARS_PER_MSG] + "\n...(dipotong)..."
+        clean.append({"role": m["role"], "content": text})
+
+    window = clean[-MAX_HISTORY_MESSAGES:]
+    while window and window[0]["role"] != "user":  #jendela harus diawali pesan user
+        window.pop(0)
+    return window
+
+def enforce_total_file_budget(attachments):
+    """Batasi total teks dokumen per request agar tidak menghabiskan TPM."""
+    remaining = MAX_TOTAL_FILE_CHARS
+    for a in attachments:
+        if a["kind"] != "text":
+            continue
+        text = a["text"]
+        if len(text) > remaining:
+            text = text[:max(remaining, 0)] + "\n...(dipotong: total isi file melebihi batas per permintaan)..."
+        a["text"] = text
+        remaining = max(remaining - len(text), 0)
+        
+#CACHE IN-MEMORY(lapis pertama, sebelum memanggil Groq)
+#catatan serverless:cache ini hidup per instance Vercel dan hilang saat cold start
+_response_cache = TTLCache(maxsize=CACHE_MAX_ENTRIES, ttl=CACHE_TTL_SECONDS)
+_cache_lock = threading.Lock()
+
+def make_cache_key(model, question, history):
+    """Kunci = model + pertanyaan (dinormalisasi) + sidik jari konteks riwayat.
+
+    Untuk pesan pertama percakapan riwayatnya kosong, jadi kuncinya murni pertanyaan.
+    Untuk pesan lanjutan ("jelaskan lebih detail", "ya"), konteks ikut masuk kunci
+    agar tidak salah mengembalikan jawaban dari percakapan lain.
+    """
+    q = re.sub(r"\s+", " ", question.strip()).casefold()
+    h = hashlib.sha256(
+        "\x1f".join(f"{m['role']}:{m['content']}" for m in history).encode("utf-8")
+    ).hexdigest() if history else ""
+    return hashlib.sha256("\x1e".join([model, q, h]).encode("utf-8")).hexdigest()
+
+def cache_get(key):
+    with _cache_lock:
+        return _response_cache.get(key)
+
+def cache_set(key, answer):
+    with _cache_lock:
+        _response_cache[key] = answer
+
+def sse(obj):
+    return f"data: {json.dumps(obj)}\n\n"
+
+@app.route("/api/config", methods=["GET"])
+def get_public_config():
+    """
+    Menyediakan konfigurasi publik ke frontend (seperti kredensial anon Supabase
+    dan jumlah API key aktif di backend).
+    """
+    return jsonify({
+        "supabase_url": SUPABASE_URL,
+        "supabase_anon_key": SUPABASE_ANON_KEY,
+        "groq_keys_count": len(GROQ_CLIENT_POOL),
+    })
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    if not client:
+    if not GROQ_CLIENT_POOL:
         return jsonify({"error": "GROQ_API_KEY belum diset di server."}), 500
 
-    raw_payload = request.form.get("payload")
-    if raw_payload:
-        payload = json.loads(raw_payload)
-    else:
-        payload = request.get_json(force=True) or {}
+    try:
+        raw_payload = request.form.get("payload")
+        if raw_payload:
+            payload = json.loads(raw_payload)
+        else:
+            payload = request.get_json(force=True, silent=True) or {}
+    except (ValueError, TypeError):
+        return jsonify({"error": "Payload tidak valid."}), 400
 
     user_message = (payload.get("message") or "").strip()
-    history = payload.get("history") or []
+    #hanya pesan terakhir, teks saja (tanpa base64 gambar)
+    history = trim_history(payload.get("history"))
 
     attachments = []
     has_image_attachment = False
@@ -373,39 +569,39 @@ def chat():
             has_image_attachment = True
         elif ext == ".pdf":
             file_text = extract_text_from_pdf(raw)
-            if len(file_text) > 35000:
-                file_text = file_text[:35000] + "\n...(dipotong, dokumen terlalu panjang)..."
+            if len(file_text) > MAX_FILE_CHARS:
+                file_text = file_text[:MAX_FILE_CHARS] + "\n...(dipotong, dokumen terlalu panjang)..."
             attachments.append({"kind": "text", "name": filename, "text": file_text})
         elif ext in {".docx", ".doc"}:
             file_text = extract_text_from_docx(raw)
-            if len(file_text) > 35000:
-                file_text = file_text[:35000] + "\n...(dipotong, dokumen terlalu panjang)..."
+            if len(file_text) > MAX_FILE_CHARS:
+                file_text = file_text[:MAX_FILE_CHARS] + "\n...(dipotong, dokumen terlalu panjang)..."
             attachments.append({"kind": "text", "name": filename, "text": file_text})
         elif ext in {".xlsx", ".xls"}:
             file_text = extract_text_from_excel(raw)
-            if len(file_text) > 35000:
-                file_text = file_text[:35000] + "\n...(dipotong, spreadsheet terlalu panjang)..."
+            if len(file_text) > MAX_FILE_CHARS:
+                file_text = file_text[:MAX_FILE_CHARS] + "\n...(dipotong, spreadsheet terlalu panjang)..."
             attachments.append({"kind": "text", "name": filename, "text": file_text})
         elif ext in {".pptx", ".ppt"}:
             file_text = extract_text_from_pptx(raw)
-            if len(file_text) > 35000:
-                file_text = file_text[:35000] + "\n...(dipotong, slide terlalu panjang)..."
+            if len(file_text) > MAX_FILE_CHARS:
+                file_text = file_text[:MAX_FILE_CHARS] + "\n...(dipotong, slide terlalu panjang)..."
             attachments.append({"kind": "text", "name": filename, "text": file_text})
         elif ext == ".ipynb":
             file_text = extract_text_from_ipynb(raw)
-            if len(file_text) > 35000:
-                file_text = file_text[:35000] + "\n...(dipotong, notebook terlalu panjang)..."
+            if len(file_text) > MAX_FILE_CHARS:
+                file_text = file_text[:MAX_FILE_CHARS] + "\n...(dipotong, notebook terlalu panjang)..."
             attachments.append({"kind": "text", "name": filename, "text": file_text})
         elif ext in CODE_AND_TEXT_EXTS:
             decoded = try_decode_as_text(raw) or "(gagal membaca isi file teks)"
-            if len(decoded) > 35000:
-                decoded = decoded[:35000] + "\n...(dipotong, file terlalu panjang)..."
+            if len(decoded) > MAX_FILE_CHARS:
+                decoded = decoded[:MAX_FILE_CHARS] + "\n...(dipotong, file terlalu panjang)..."
             attachments.append({"kind": "text", "name": filename, "text": decoded})
         else:
             decoded = try_decode_as_text(raw)
             if decoded is not None:
-                if len(decoded) > 35000:
-                    decoded = decoded[:35000] + "\n...(dipotong, file terlalu panjang)..."
+                if len(decoded) > MAX_FILE_CHARS:
+                    decoded = decoded[:MAX_FILE_CHARS] + "\n...(dipotong, file terlalu panjang)..."
                 attachments.append({"kind": "text", "name": filename, "text": decoded})
             else:
                 attachments.append({
@@ -420,43 +616,127 @@ def chat():
     if not user_message and attachments:
         user_message = "Tolong analisis lampiran ini."
 
+    enforce_total_file_budget(attachments)
+
+    image_count = sum(1 for a in attachments if a["kind"] == "image")
+    if image_count > MAX_IMAGES_PER_REQUEST:
+        return jsonify({"error": f"Maksimal {MAX_IMAGES_PER_REQUEST} gambar per pesan."}), 400
+
     user_content, is_multimodal = build_user_content(user_message, attachments)
 
+    #urutan payload dijaga agar prefix-nya stabil untuk Groq prompt caching
+    #[system (statis, tanpa nilai dinamis)] -> [riwayat ter-trim, teks saja] -> [pesan user saat ini]
+    #konten dinamis (isi file, base64 gambar) hanya ada di pesan user PALING AKHIR
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for m in history[-20:]:
-        if m.get("role") in ("user", "assistant") and m.get("content"):
-            messages.append({"role": m["role"], "content": m["content"]})
+    messages.extend(history)
     messages.append({"role": "user", "content": user_content})
 
     model_to_use = VISION_MODEL if has_image_attachment else TEXT_MODEL
     trigger_earth_image = (not has_image_attachment) and is_earth_image_intent(user_message)
 
+    #cache hanya untuk pesan teks murni (tanpa lampiran) dan bukan permintaan gambar NASA.
+    cache_key = None
+    if not attachments and not trigger_earth_image:
+        cache_key = make_cache_key(model_to_use, user_message, history)
+
     def generate():
         if trigger_earth_image:
             try:
                 earth_payload = get_earth_today_payload()
-                yield f"data: {json.dumps({'earth_image': earth_payload})}\n\n"
+                yield sse({'earth_image': earth_payload})
             except Exception as e:
-                yield f"data: {json.dumps({'earth_image': {'ok': False, 'error': str(e)}})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
+                yield sse({'earth_image': {'ok': False, 'error': str(e)}})
+            yield sse({'done': True})
             return
 
+        #lapis 1:cek cache dulu, tidak ada HTTP request ke Groq jika hit
+        if cache_key:
+            cached = cache_get(cache_key)
+            if cached is not None:
+                for i in range(0, len(cached), 60):
+                    yield sse({'token': cached[i:i + 60]})
+                yield sse({'done': True, 'cached': True})
+                return
+
+        # =====================================================================
+        # AUTO-FALLBACK & ROTASI MULTI-KEY CERDAS
+        # =====================================================================
+        # Mengambil key awal berdasarkan urutan Round-Robin. Jika key ini
+        # terkena batas limit (429) atau error koneksi, loop otomatis mencoba
+        # key berikutnya di pool hingga seluruh key dicoba.
+        start_client, start_idx, total_keys = get_next_client_pair()
+        if not start_client:
+            yield sse({'error': "Tidak ada Groq API Key yang aktif di server."})
+            return
+
+        stream = None
+        for attempt in range(total_keys):
+            curr_idx = (start_idx + attempt) % total_keys
+            curr_client = GROQ_CLIENT_POOL[curr_idx]
+            key_num = curr_idx + 1
+
+            try:
+                stream = curr_client.chat.completions.create(
+                    model=model_to_use,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=MAX_OUTPUT_TOKENS,
+                    top_p=1,
+                    stream=True,
+                )
+                break  # Sukses memulai stream!
+            except RateLimitError as e:
+                print(f"[Groq Failover] Key #{key_num} terkena Rate Limit 429. Mencoba key berikutnya di pool...")
+                if attempt == total_keys - 1:
+                    retry_after = None
+                    try:
+                        retry_after = e.response.headers.get("retry-after")
+                    except Exception:
+                        pass
+                    wait = f" Coba lagi sekitar {retry_after} detik." if retry_after else " Coba lagi beberapa saat lagi."
+                    yield sse({'error': "Semua API Key Groq di server sedang mencapai batas limit (429)." + wait})
+                    return
+                continue
+            except APIConnectionError:
+                print(f"[Groq Failover] Key #{key_num} gagal koneksi. Mencoba key berikutnya di pool...")
+                if attempt == total_keys - 1:
+                    yield sse({'error': "Tidak bisa terhubung ke server Groq di semua API key. Coba lagi."})
+                    return
+                continue
+            except APIStatusError as e:
+                if e.status_code == 429:
+                    print(f"[Groq Failover] Key #{key_num} status 429. Mencoba key berikutnya di pool...")
+                    if attempt == total_keys - 1:
+                        yield sse({'error': "Batas permintaan Groq (rate limit 429) tercapai di seluruh API key. Coba beberapa saat lagi."})
+                        return
+                    continue
+                elif e.status_code == 413:
+                    yield sse({'error': "Permintaan terlalu besar untuk model. Kirim file yang lebih kecil atau mulai percakapan baru."})
+                    return
+                else:
+                    yield sse({'error': str(e)})
+                    return
+            except Exception as e:
+                yield sse({'error': str(e)})
+                return
+
+        parts = []
         try:
-            stream = client.chat.completions.create(
-                model=model_to_use,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=2048,
-                top_p=1,
-                stream=True,
-            )
             for chunk in stream:
+                if not chunk.choices:
+                    continue
                 delta = chunk.choices[0].delta.content
                 if delta:
-                    yield f"data: {json.dumps({'token': delta})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
+                    parts.append(delta)
+                    yield sse({'token': delta})
+
+            #simpan ke cache hanya jika stream selesai penuh(bukan error/dihentikan user)
+            full_answer = "".join(parts)
+            if cache_key and full_answer.strip() and len(full_answer) <= CACHE_MAX_ANSWER_CHARS:
+                cache_set(cache_key, full_answer)
+            yield sse({'done': True})
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield sse({'error': str(e)})
 
     return Response(
         stream_with_context(generate()),
